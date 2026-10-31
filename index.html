@@ -107,21 +107,32 @@ canvas {
   touch-action: none;
 }
 
+.suggestion {
+  text-align: center;
+  background: #101b3a;
+  border: 1px solid #314675;
+  color: #55eaff;
+  border-radius: 10px;
+  padding: 9px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
 .controls {
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 7px;
+  margin-top: 12px;
 }
 
 button {
   flex: 1;
   border: none;
-  padding: 13px 8px;
-  border-radius: 13px;
+  padding: 12px 5px;
+  border-radius: 11px;
   color: white;
   font-weight: bold;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   background: linear-gradient(135deg,#287cff,#714dff);
   box-shadow: 0 5px 15px #315bff55;
@@ -142,6 +153,11 @@ button:active {
   margin-top: 13px;
 }
 
+.wrapper {
+  width: 100%;
+  position: relative;
+}
+
 .overlay {
   position: absolute;
   inset: 0;
@@ -149,7 +165,7 @@ button:active {
   display: none;
   justify-content: center;
   align-items: center;
-  border-radius: 20px;
+  border-radius: 16px;
   z-index: 5;
 }
 
@@ -169,18 +185,24 @@ button:active {
 .popup h1 {
   color: #55eaff;
   margin-bottom: 12px;
+  font-size: 23px;
 }
 
 .popup p {
   color: #c4d4ff;
   margin-bottom: 20px;
+  line-height: 1.5;
 }
 
-.wrapper {
+.popup button {
   width: 100%;
-  position: relative;
 }
 
+@media(max-width:360px) {
+  .game { padding: 11px; }
+  .logo { font-size: 19px; }
+  button { font-size: 10px; }
+}
 </style>
 </head>
 
@@ -190,7 +212,7 @@ button:active {
 
   <div class="header">
     <div class="logo">🔮 BUBBLE POP</div>
-    <div class="level" id="level">LEVEL 0</div>
+    <div class="level" id="level">LEVEL 1</div>
   </div>
 
   <div class="stats">
@@ -213,6 +235,7 @@ button:active {
   </div>
 
   <div class="wrapper">
+
     <canvas id="canvas" width="420" height="700"></canvas>
 
     <div class="overlay" id="overlay">
@@ -222,15 +245,23 @@ button:active {
         <button id="popupBtn" onclick="nextLevel()">NEXT LEVEL ➜</button>
       </div>
     </div>
+
+  </div>
+
+  <div class="suggestion" id="suggestion">
+    💡 ANALYZING BEST BALL...
   </div>
 
   <div class="controls">
     <button onclick="restart()">↻ RESTART</button>
+    <button onclick="swapBall()">⇄ SWAP BALL</button>
     <button id="pause" onclick="togglePause()">Ⅱ PAUSE</button>
   </div>
 
   <div class="hint">
     🎯 Aim and tap to shoot • Match 3 or more bubbles!
+    <br>
+    💡 Follow the suggested ball for better matches.
   </div>
 
 </div>
@@ -256,57 +287,88 @@ const colors = [
 ];
 
 let grid = [];
-let level = 0;
+let level = 1;
 let score = 0;
-let best = Number(localStorage.getItem("bubbleBest")) || 0;
+let best = 0;
 let target = 300;
+
 let currentColor = 0;
 let nextColor = 1;
+
 let projectile = null;
-let aim = {x:210,y:200};
+
+let aim = {
+  x: 210,
+  y: 200
+};
+
 let paused = false;
 let gameOver = false;
 let levelWon = false;
+
 let particles = [];
 let shots = 0;
 
-const shooter = {x:210,y:650};
+const shooter = {
+  x: 210,
+  y: 650
+};
+
+// Load best score safely
+try {
+  best = Number(localStorage.getItem("bubbleBest")) || 0;
+} catch(e) {
+  best = 0;
+}
 
 function randomColor() {
-  return Math.floor(Math.random() * Math.min(5,3 + Math.floor(level/15)));
+  return Math.floor(
+    Math.random() *
+    Math.min(5, 3 + Math.floor(level / 15))
+  );
 }
 
 function xPos(r,c) {
-  return 28 + c*STEP + (r%2)*17;
+  return 28 + c * STEP + (r % 2) * 17;
 }
 
 function yPos(r) {
-  return 55 + r*ROW;
+  return 55 + r * ROW;
 }
 
 function valid(r,c) {
-  return r>=0 && r<MAX_ROWS && c>=0 && c<COLS;
+  return r >= 0 &&
+         r < MAX_ROWS &&
+         c >= 0 &&
+         c < COLS;
 }
 
 function neighbors(r,c) {
-  const shift = r%2;
+  const shift = r % 2;
+
   return [
-    [r,c-1],[r,c+1],
-    [r-1,c-shift],[r-1,c+1-shift],
-    [r+1,c-shift],[r+1,c+1-shift]
-  ].filter(([a,b])=>valid(a,b));
+    [r,c-1],
+    [r,c+1],
+    [r-1,c-shift],
+    [r-1,c+1-shift],
+    [r+1,c-shift],
+    [r+1,c+1-shift]
+  ].filter(([a,b]) => valid(a,b));
 }
 
 function initGrid() {
   grid = [];
 
-  let rows = Math.min(5 + Math.floor(level/10),12);
+  let rows = Math.min(
+    5 + Math.floor(level / 10),
+    12
+  );
 
-  for(let r=0;r<MAX_ROWS;r++) {
+  for(let r=0; r<MAX_ROWS; r++) {
     grid[r] = [];
 
-    for(let c=0;c<COLS;c++) {
-      if(r<rows && Math.random() > .13) {
+    for(let c=0; c<COLS; c++) {
+      if(r < rows && Math.random() > .13) {
         grid[r][c] = randomColor();
       } else {
         grid[r][c] = null;
@@ -318,45 +380,82 @@ function initGrid() {
 function newGame() {
   score = 0;
   shots = 0;
+
   gameOver = false;
   levelWon = false;
   paused = false;
+
   projectile = null;
   particles = [];
 
-  target = 300 + level*100;
+  target = 300 + (level - 1) * 100;
 
   initGrid();
 
   currentColor = randomColor();
   nextColor = randomColor();
 
-  document.getElementById("overlay").classList.remove("show");
-  document.getElementById("pause").innerText = "Ⅱ PAUSE";
+  document.getElementById("overlay")
+    .classList.remove("show");
+
+  document.getElementById("pause").innerText =
+    "Ⅱ PAUSE";
 
   updateUI();
+  updateSuggestion();
 }
 
 function restart() {
   newGame();
 }
 
-function updateUI() {
-  document.getElementById("level").innerText = "LEVEL " + level;
-  document.getElementById("score").innerText = score;
-  document.getElementById("target").innerText = target;
-  document.getElementById("best").innerText = best;
+// Swap current and next balls
+function swapBall() {
+  if(
+    projectile ||
+    paused ||
+    gameOver ||
+    levelWon
+  ) return;
 
-  document.getElementById("progress").style.width =
-    Math.min(100,score/target*100) + "%";
+  let temp = currentColor;
+
+  currentColor = nextColor;
+  nextColor = temp;
+
+  updateSuggestion();
+  render();
 }
 
+// Update all statistics
+function updateUI() {
+  document.getElementById("level").innerText =
+    "LEVEL " + level;
+
+  document.getElementById("score").innerText =
+    score;
+
+  document.getElementById("target").innerText =
+    target;
+
+  document.getElementById("best").innerText =
+    best;
+
+  document.getElementById("progress").style.width =
+    Math.min(100, score / target * 100) + "%";
+}
+
+// Draw bubble
 function drawBubble(x,y,color,r=R) {
   if(color === null || color === undefined) return;
 
   let g = ctx.createRadialGradient(
-    x-r*.4,y-r*.5,2,
-    x,y,r
+    x-r*.4,
+    y-r*.5,
+    2,
+    x,
+    y,
+    r
   );
 
   g.addColorStop(0,"#ffffff");
@@ -365,6 +464,7 @@ function drawBubble(x,y,color,r=R) {
 
   ctx.beginPath();
   ctx.arc(x,y,r,0,Math.PI*2);
+
   ctx.fillStyle = g;
   ctx.fill();
 
@@ -373,152 +473,111 @@ function drawBubble(x,y,color,r=R) {
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(x-r*.35,y-r*.4,3,0,Math.PI*2);
+  ctx.arc(
+    x-r*.35,
+    y-r*.4,
+    3,
+    0,
+    Math.PI*2
+  );
+
   ctx.fillStyle = "#ffffffaa";
   ctx.fill();
 }
 
+// Background
 function drawBackground() {
   ctx.clearRect(0,0,W,H);
 
   for(let i=0;i<35;i++) {
-    let x=(i*97)%W;
-    let y=(i*137)%H;
+    let x = (i*97) % W;
+    let y = (i*137) % H;
 
-    ctx.fillStyle="#ffffff22";
+    ctx.fillStyle = "#ffffff22";
     ctx.fillRect(x,y,2,2);
   }
 }
 
+// Draw bubbles
 function drawGrid() {
   for(let r=0;r<MAX_ROWS;r++) {
     for(let c=0;c<COLS;c++) {
       if(grid[r][c] !== null) {
-        drawBubble(xPos(r,c),yPos(r),grid[r][c]);
+        drawBubble(
+          xPos(r,c),
+          yPos(r),
+          grid[r][c]
+        );
       }
     }
   }
 }
 
+// Shooter and next ball
 function drawShooter() {
   ctx.beginPath();
   ctx.arc(shooter.x,shooter.y,25,0,Math.PI*2);
-  ctx.fillStyle="#243e75";
+
+  ctx.fillStyle = "#243e75";
   ctx.fill();
 
-  ctx.strokeStyle="#7bcfff";
-  ctx.lineWidth=2;
+  ctx.strokeStyle = "#7bcfff";
+  ctx.lineWidth = 2;
   ctx.stroke();
 
-  drawBubble(shooter.x,shooter.y,currentColor,14);
+  drawBubble(
+    shooter.x,
+    shooter.y,
+    currentColor,
+    14
+  );
 
   drawBubble(350,650,nextColor,12);
 
-  ctx.fillStyle="#a9c9ff";
-  ctx.font="12px Arial";
-  ctx.fillText("NEXT",334,680);
+  ctx.fillStyle = "#a9c9ff";
+  ctx.font = "bold 12px Arial";
+  ctx.textAlign = "center";
+
+  ctx.fillText("NEXT",350,680);
+
+  ctx.textAlign = "left";
 }
 
-function drawAim() {
-  if(projectile || paused || gameOver || levelWon) return;
-
-  let dx=aim.x-shooter.x;
-  let dy=aim.y-shooter.y;
-
-  let angle=Math.atan2(dy,dx);
-
-  if(angle > -0.15) angle=-0.15;
-  if(angle < -Math.PI+0.15) angle=-Math.PI+0.15;
-
-  ctx.setLineDash([5,8]);
-  ctx.strokeStyle="#ffffff99";
-  ctx.lineWidth=2;
-
-  ctx.beginPath();
-  ctx.moveTo(shooter.x,shooter.y);
-  ctx.lineTo(
-    shooter.x+Math.cos(angle)*115,
-    shooter.y+Math.sin(angle)*115
-  );
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-function drawParticles() {
-  particles.forEach(p=>{
-    ctx.globalAlpha=p.life;
-    ctx.fillStyle=p.color;
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,4,0,Math.PI*2);
-    ctx.fill();
-  });
-  ctx.globalAlpha=1;
-}
-
-function render() {
-  drawBackground();
-  drawGrid();
-  drawAim();
-  drawShooter();
-
-  if(projectile) {
-    drawBubble(projectile.x,projectile.y,projectile.color);
-  }
-
-  drawParticles();
-
-  if(paused) {
-    ctx.fillStyle="#0009";
-    ctx.fillRect(0,0,W,H);
-    ctx.fillStyle="white";
-    ctx.font="bold 34px Arial";
-    ctx.textAlign="center";
-    ctx.fillText("PAUSED",W/2,H/2);
-    ctx.textAlign="left";
-  }
-}
-
+// Calculate shooting angle
 function getAngle() {
-  let a=Math.atan2(
-    aim.y-shooter.y,
-    aim.x-shooter.x
+  let a = Math.atan2(
+    aim.y - shooter.y,
+    aim.x - shooter.x
   );
 
   return Math.max(
-    -Math.PI+.15,
+    -Math.PI + .15,
     Math.min(-.15,a)
   );
 }
 
-function shoot() {
-  if(projectile || paused || gameOver || levelWon) return;
-
-  let a=getAngle();
-
-  projectile={
-    x:shooter.x,
-    y:shooter.y,
-    vx:Math.cos(a)*9,
-    vy:Math.sin(a)*9,
-    color:currentColor
-  };
-}
-
+// Find nearest empty position
 function findNearest(x,y) {
-  let bestCell=null;
-  let distance=Infinity;
+  let bestCell = null;
+  let distance = Infinity;
 
   for(let r=0;r<MAX_ROWS;r++) {
     for(let c=0;c<COLS;c++) {
+
       if(grid[r][c] !== null) continue;
 
-      let xx=xPos(r,c);
-      let yy=yPos(r);
-      let d=Math.hypot(xx-x,yy-y);
+      let xx = xPos(r,c);
+      let yy = yPos(r);
 
-      if(d<distance) {
-        distance=d;
-        bestCell={r,c};
+      let d = Math.hypot(xx-x,yy-y);
+
+      if(d < distance) {
+        distance = d;
+
+        bestCell = {
+          r,
+          c
+        };
       }
     }
   }
@@ -526,27 +585,206 @@ function findNearest(x,y) {
   return bestCell;
 }
 
+// Predict shooting trajectory
+function predictShot() {
+  let angle = getAngle();
+
+  let x = shooter.x;
+  let y = shooter.y;
+
+  let vx = Math.cos(angle) * 4;
+  let vy = Math.sin(angle) * 4;
+
+  let points = [];
+
+  for(let i=0;i<400;i++) {
+
+    x += vx;
+    y += vy;
+
+    // Wall bounce
+    if(x < R || x > W-R) {
+      vx *= -1;
+      x = Math.max(R,Math.min(W-R,x));
+    }
+
+    let hit = y < R;
+
+    // Bubble collision
+    for(let r=0;r<MAX_ROWS && !hit;r++) {
+      for(let c=0;c<COLS;c++) {
+
+        if(grid[r][c] === null) continue;
+
+        let d = Math.hypot(
+          x-xPos(r,c),
+          y-yPos(r)
+        );
+
+        if(d < R*2-2) {
+          hit = true;
+          break;
+        }
+      }
+    }
+
+    points.push({x,y});
+
+    if(hit) {
+      return {
+        points,
+        cell: findNearest(x,y),
+        hit: true
+      };
+    }
+  }
+
+  return {
+    points,
+    cell: findNearest(x,y),
+    hit: false
+  };
+}
+
+// Draw smart aiming guide and final target
+function drawAim() {
+  if(
+    projectile ||
+    paused ||
+    gameOver ||
+    levelWon
+  ) return;
+
+  let prediction = predictShot();
+
+  let points = prediction.points;
+
+  if(points.length === 0) return;
+
+  ctx.beginPath();
+  ctx.moveTo(shooter.x,shooter.y);
+
+  points.forEach((p,i) => {
+    if(i % 2 === 0) {
+      ctx.lineTo(p.x,p.y);
+    }
+  });
+
+  ctx.setLineDash([5,6]);
+  ctx.strokeStyle = "#ffffffcc";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Final target indicator
+  let last = points[points.length-1];
+
+  ctx.beginPath();
+  ctx.arc(last.x,last.y,10,0,Math.PI*2);
+
+  ctx.strokeStyle = "#55eaff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(last.x,last.y,3,0,Math.PI*2);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+
+  return prediction;
+}
+
+// Draw particles
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+
+    ctx.fillStyle = p.color;
+
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,4,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  ctx.globalAlpha = 1;
+}
+
+// Render game
+function render() {
+  drawBackground();
+  drawGrid();
+
+  drawAim();
+  drawShooter();
+
+  if(projectile) {
+    drawBubble(
+      projectile.x,
+      projectile.y,
+      projectile.color
+    );
+  }
+
+  drawParticles();
+
+  if(paused) {
+    ctx.fillStyle = "#0009";
+    ctx.fillRect(0,0,W,H);
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 34px Arial";
+    ctx.textAlign = "center";
+
+    ctx.fillText("PAUSED",W/2,H/2);
+
+    ctx.textAlign = "left";
+  }
+}
+
+// Shoot bubble
+function shoot() {
+  if(
+    projectile ||
+    paused ||
+    gameOver ||
+    levelWon
+  ) return;
+
+  let a = getAngle();
+
+  projectile = {
+    x: shooter.x,
+    y: shooter.y,
+    vx: Math.cos(a)*9,
+    vy: Math.sin(a)*9,
+    color: currentColor
+  };
+}
+
+// Move projectile
 function updateProjectile() {
   if(!projectile) return;
 
-  projectile.x+=projectile.vx;
-  projectile.y+=projectile.vy;
+  projectile.x += projectile.vx;
+  projectile.y += projectile.vy;
 
-  if(projectile.x<R || projectile.x>W-R) {
-    projectile.vx*=-1;
+  if(projectile.x < R || projectile.x > W-R) {
+    projectile.vx *= -1;
   }
 
-  let hit = projectile.y<R;
+  let hit = projectile.y < R;
 
   for(let r=0;r<MAX_ROWS && !hit;r++) {
     for(let c=0;c<COLS;c++) {
-      if(grid[r][c]===null) continue;
+
+      if(grid[r][c] === null) continue;
 
       if(Math.hypot(
         projectile.x-xPos(r,c),
         projectile.y-yPos(r)
-      )<R*2-2) {
-        hit=true;
+      ) < R*2-2) {
+        hit = true;
         break;
       }
     }
@@ -557,218 +795,358 @@ function updateProjectile() {
   }
 }
 
-function placeProjectile() {
-  if(!projectile) return;
-
-  let cell=findNearest(projectile.x,projectile.y);
-
-  if(!cell) {
-    projectile=null;
-    return;
-  }
-
-  let {r,c}=cell;
-  let color=projectile.color;
-
-  grid[r][c]=color;
-  projectile=null;
-
-  shots++;
-
-  let group=findMatches(r,c,color);
-
-  if(group.length>=3) {
-    group.forEach(([a,b])=>{
-      createParticles(xPos(a,b),yPos(a),color);
-      grid[a][b]=null;
-    });
-
-    score+=group.length*20;
-
-    removeFloating();
-
-  } else if(shots%6===0) {
-    addPenaltyRow();
-  }
-
-  currentColor=nextColor;
-  nextColor=randomColor();
-
-  updateUI();
-  checkGame();
-}
-
+// Find matching bubbles
 function findMatches(r,c,color) {
-  let stack=[[r,c]];
-  let visited=new Set();
-  let result=[];
+  let stack = [[r,c]];
+  let visited = new Set();
+  let result = [];
 
   while(stack.length) {
-    let [a,b]=stack.pop();
-    let key=a+","+b;
+    let [a,b] = stack.pop();
+
+    let key = a+","+b;
 
     if(visited.has(key)) continue;
+
     visited.add(key);
 
-    if(!valid(a,b) || grid[a][b]!==color) continue;
+    if(
+      !valid(a,b) ||
+      grid[a][b] !== color
+    ) continue;
 
     result.push([a,b]);
 
-    neighbors(a,b).forEach(n=>stack.push(n));
+    neighbors(a,b).forEach(n => {
+      stack.push(n);
+    });
   }
 
   return result;
 }
 
+// Place projectile
+function placeProjectile() {
+  if(!projectile) return;
+
+  let cell = findNearest(
+    projectile.x,
+    projectile.y
+  );
+
+  if(!cell) {
+    projectile = null;
+    return;
+  }
+
+  let {r,c} = cell;
+  let color = projectile.color;
+
+  grid[r][c] = color;
+
+  projectile = null;
+
+  shots++;
+
+  let group = findMatches(r,c,color);
+
+  if(group.length >= 3) {
+
+    group.forEach(([a,b]) => {
+      createParticles(
+        xPos(a,b),
+        yPos(a),
+        color
+      );
+
+      grid[a][b] = null;
+    });
+
+    score += group.length * 20;
+
+    removeFloating();
+
+  } else if(shots % 6 === 0) {
+    addPenaltyRow();
+  }
+
+  currentColor = nextColor;
+  nextColor = randomColor();
+
+  updateUI();
+  updateSuggestion();
+  checkGame();
+}
+
+// Remove floating bubbles
 function removeFloating() {
-  let connected=new Set();
-  let stack=[];
+  let connected = new Set();
+  let stack = [];
 
   for(let c=0;c<COLS;c++) {
-    if(grid[0][c]!==null) stack.push([0,c]);
+    if(grid[0][c] !== null) {
+      stack.push([0,c]);
+    }
   }
 
   while(stack.length) {
-    let [r,c]=stack.pop();
-    let key=r+","+c;
+    let [r,c] = stack.pop();
+
+    let key = r+","+c;
 
     if(connected.has(key)) continue;
+
     connected.add(key);
 
-    neighbors(r,c).forEach(([a,b])=>{
-      if(grid[a][b]!==null) stack.push([a,b]);
+    neighbors(r,c).forEach(([a,b]) => {
+      if(grid[a][b] !== null) {
+        stack.push([a,b]);
+      }
     });
   }
 
   for(let r=0;r<MAX_ROWS;r++) {
     for(let c=0;c<COLS;c++) {
-      if(grid[r][c]!==null &&
-         !connected.has(r+","+c)) {
-        createParticles(xPos(r,c),yPos(r),grid[r][c]);
-        grid[r][c]=null;
-        score+=10;
+
+      if(
+        grid[r][c] !== null &&
+        !connected.has(r+","+c)
+      ) {
+
+        createParticles(
+          xPos(r,c),
+          yPos(r),
+          grid[r][c]
+        );
+
+        grid[r][c] = null;
+        score += 10;
       }
     }
   }
 }
 
+// Add penalty row
 function addPenaltyRow() {
   for(let r=MAX_ROWS-1;r>0;r--) {
-    grid[r]=grid[r-1].slice();
+    grid[r] = grid[r-1].slice();
   }
 
-  grid[0]=[];
+  grid[0] = [];
 
   for(let c=0;c<COLS;c++) {
-    grid[0][c]=randomColor();
+    grid[0][c] = randomColor();
   }
 }
 
+// Create particles
 function createParticles(x,y,color) {
   for(let i=0;i<7;i++) {
     particles.push({
-      x,y,
-      vx:(Math.random()-.5)*5,
-      vy:(Math.random()-.5)*5,
-      color:colors[color],
-      life:1
+      x,
+      y,
+      vx: (Math.random()-.5)*5,
+      vy: (Math.random()-.5)*5,
+      color: colors[color],
+      life: 1
     });
   }
 }
 
+// Update particles
 function updateParticles() {
-  particles.forEach(p=>{
-    p.x+=p.vx;
-    p.y+=p.vy;
-    p.life-=.035;
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= .035;
   });
 
-  particles=particles.filter(p=>p.life>0);
+  particles = particles.filter(p => p.life > 0);
 }
 
+// Calculate colour matching potential
+function evaluateBall(color,cell) {
+  if(!cell) return 0;
+
+  let {r,c} = cell;
+
+  if(grid[r][c] !== null) return 0;
+
+  grid[r][c] = color;
+
+  let group = findMatches(r,c,color);
+
+  grid[r][c] = null;
+
+  return group.length;
+}
+
+// Suggest best ball
+function updateSuggestion() {
+  let prediction = predictShot();
+
+  let cell = prediction.cell;
+
+  let currentScore = evaluateBall(
+    currentColor,
+    cell
+  );
+
+  let nextScore = evaluateBall(
+    nextColor,
+    cell
+  );
+
+  let suggestion =
+    document.getElementById("suggestion");
+
+  if(!cell) {
+    suggestion.innerText = "⚠️ NO AVAILABLE SPACE";
+    return;
+  }
+
+  if(currentScore >= 3 && currentScore >= nextScore) {
+    suggestion.innerText =
+      "⭐ BEST CHOICE: CURRENT BALL (" +
+      currentScore + " MATCHES)";
+  }
+  else if(nextScore >= 3 && nextScore > currentScore) {
+    suggestion.innerText =
+      "💡 SWAP BALL! NEXT BALL CAN MATCH " +
+      nextScore + " BUBBLES";
+  }
+  else if(currentScore > nextScore) {
+    suggestion.innerText =
+      "🎯 CURRENT BALL IS THE BETTER OPTION";
+  }
+  else if(nextScore > currentScore) {
+    suggestion.innerText =
+      "💡 NEXT BALL IS A BETTER OPTION - SWAP!";
+  }
+  else {
+    suggestion.innerText =
+      "🎯 BOTH BALLS HAVE SIMILAR MATCH POTENTIAL";
+  }
+}
+
+// Check win and lose
 function checkGame() {
   updateUI();
 
-  if(score>=target) {
+  if(score >= target) {
     winLevel();
     return;
   }
 
-  let count=0;
-  let highest=0;
+  let count = 0;
+  let highest = 0;
 
   for(let r=0;r<MAX_ROWS;r++) {
     for(let c=0;c<COLS;c++) {
-      if(grid[r][c]!==null) {
+
+      if(grid[r][c] !== null) {
         count++;
-        highest=Math.max(highest,r);
+        highest = Math.max(highest,r);
       }
     }
   }
 
-  if(count===0) {
+  if(count === 0) {
     winLevel();
     return;
   }
 
-  if(highest>=MAX_ROWS-2 || yPos(highest)>610) {
+  if(
+    highest >= MAX_ROWS-2 ||
+    yPos(highest) > 610
+  ) {
     endGame();
   }
 }
 
+// Level complete
 function winLevel() {
   if(levelWon) return;
 
-  levelWon=true;
-  let completed=level;
+  levelWon = true;
 
-  document.getElementById("popupTitle").innerText=
-    completed>=100 ? "🏆 YOU ARE THE CHAMPION!" : "🎉 LEVEL COMPLETE!";
+  if(score > best) {
+    best = score;
 
-  document.getElementById("popupText").innerText=
-    completed>=100
-    ? "You completed all 100 levels!"
-    : "Amazing! Get ready for level "+(level+1);
+    try {
+      localStorage.setItem(
+        "bubbleBest",
+        best
+      );
+    } catch(e) {}
+  }
 
-  document.getElementById("popupBtn").innerText=
-    completed>=100 ? "PLAY AGAIN" : "NEXT LEVEL ➜";
+  updateUI();
 
-  document.getElementById("overlay").classList.add("show");
+  document.getElementById("popupTitle").innerText =
+    level >= 100
+      ? "🏆 YOU ARE THE CHAMPION!"
+      : "🎉 LEVEL COMPLETE!";
+
+  document.getElementById("popupText").innerText =
+    level >= 100
+      ? "You completed all 100 levels!"
+      : "Amazing! Get ready for level " + (level+1);
+
+  document.getElementById("popupBtn").innerText =
+    level >= 100
+      ? "PLAY AGAIN"
+      : "NEXT LEVEL ➜";
+
+  document.getElementById("overlay")
+    .classList.add("show");
 }
 
+// Game over
 function endGame() {
-  gameOver=true;
+  gameOver = true;
 
-  document.getElementById("popupTitle").innerText=
+  document.getElementById("popupTitle").innerText =
     "GAME OVER!";
 
-  document.getElementById("popupText").innerText=
-    "Your score: "+score+" • Try again!";
+  document.getElementById("popupText").innerText =
+    "Your score: " + score + " • Try again!";
 
-  document.getElementById("popupBtn").innerText=
+  document.getElementById("popupBtn").innerText =
     "RETRY";
 
-  document.getElementById("overlay").classList.add("show");
+  document.getElementById("overlay")
+    .classList.add("show");
 }
 
+// Next level
 function nextLevel() {
   if(levelWon) {
-    if(level>=100) level=0;
-    else level++;
+    if(level >= 100) {
+      level = 1;
+    } else {
+      level++;
+    }
   }
 
   newGame();
 }
 
+// Pause
 function togglePause() {
   if(gameOver || levelWon) return;
 
-  paused=!paused;
+  paused = !paused;
 
-  document.getElementById("pause").innerText=
+  document.getElementById("pause").innerText =
     paused ? "▶ RESUME" : "Ⅱ PAUSE";
+
+  if(!paused) {
+    updateSuggestion();
+  }
 }
 
+// Game loop
 function loop() {
   if(!paused && !gameOver && !levelWon) {
     updateProjectile();
@@ -776,28 +1154,50 @@ function loop() {
   }
 
   render();
+
   requestAnimationFrame(loop);
 }
 
+// Pointer movement
 function pointerMove(e) {
-  const rect=canvas.getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
 
-  aim.x=(e.clientX-rect.left)*W/rect.width;
-  aim.y=(e.clientY-rect.top)*H/rect.height;
+  aim.x =
+    (e.clientX-rect.left)*W/rect.width;
 
-  aim.y=Math.min(aim.y,shooter.y-20);
+  aim.y =
+    (e.clientY-rect.top)*H/rect.height;
+
+  aim.y = Math.min(
+    aim.y,
+    shooter.y-20
+  );
+
+  updateSuggestion();
 }
 
-canvas.addEventListener("pointermove",pointerMove);
+// Mouse and touch controls
+canvas.addEventListener(
+  "pointermove",
+  pointerMove
+);
 
-canvas.addEventListener("pointerdown",e=>{
-  pointerMove(e);
-  shoot();
-});
+canvas.addEventListener(
+  "pointerdown",
+  e => {
+    e.preventDefault();
 
+    pointerMove(e);
+    shoot();
+  }
+);
+
+// Start game
 newGame();
 loop();
+
 </script>
 
 </body>
 </html>
+h
